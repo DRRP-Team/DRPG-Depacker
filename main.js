@@ -52,30 +52,35 @@ function palette(file) {
 
 function walls2(file, palettes, mappings) {
   const textureBuffer = fs.readFileSync(file).slice(4);
-  let outputBuffer = [];
 
-  const textureSize = TEXTURE_SIZE[0] * TEXTURE_SIZE[1];
+  for (const [textureId, paletteId] of mappings) {
 
-  for (const [textureOffset, palid] of mappings) {
-
-    for (let pixelsOffset = 0; pixelsOffset < textureSize; pixelsOffset += 2) {
-      const palette = palettes[palid];
-
-      // Each uint8 have two uint4 pixels
-      const pixels = textureBuffer[textureOffset / 2 + pixelsOffset / 2];
-      const pixel1 = pixels & 0xF;
-      const pixel2 = pixels >> 4 & 0xF;
-
-      outputBuffer.push(...palette[pixel1], ...palette[pixel2]);
-    }
+    const outputBuffer = getTexture(textureBuffer, palettes, textureId, paletteId);
 
     fs.writeFileSync(
-      `export/texel_${textureOffset / textureSize}_palette_${palid}.raw`,
+      `export/texel_${textureId}_palette_${paletteId}.raw`,
       Buffer.from(outputBuffer)
     );
-
-    outputBuffer = [];
   }
+}
+
+function getTexture(texelsBuffer, palettes, textureId, paletteId) {
+  const textureSize = TEXTURE_SIZE[0] * TEXTURE_SIZE[1];
+
+  const outBuffer = [];
+
+  for (let pixelsOffset = 0; pixelsOffset < textureSize; pixelsOffset += 2) {
+    const palette = palettes[paletteId];
+
+    // Each uint8 have two uint4 pixels
+    const pixels = texelsBuffer[textureId * 2048 + pixelsOffset / 2];
+    const pixel1 = pixels & 0xF;
+    const pixel2 = pixels >> 4 & 0xF;
+
+    outBuffer.push(...palette[pixel1], ...palette[pixel2]);
+  }
+
+  return outBuffer;
 }
 
 function mappings(file) {
@@ -91,12 +96,12 @@ function mappings(file) {
 
   const dict = [];
 
-  for (let i = 0; i < texturesCount; i+=2) {
-    const texeloffset = buffer.readUInt32LE(offset);// / 4096;
+  for (let i = 0; i < texturesCount; i += 1) {
+    const texelId = buffer.readUInt32LE(offset) / (TEXTURE_SIZE[0] * TEXTURE_SIZE[1]);
     offset += 4;
-    const palid = buffer.readUInt32LE(offset) / PALETTE_SIZE;
+    const paletteId = buffer.readUInt32LE(offset) / PALETTE_SIZE;
     offset += 4;
-    dict.push([texeloffset, palid]);
+    dict.push([texelId, paletteId]);
   }
   return dict;
 }
