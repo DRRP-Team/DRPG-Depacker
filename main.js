@@ -8,8 +8,6 @@ const MAPPINGS = 'mappings.bin';
 const PALETTE_SIZE = 16;
 const TEXTURE_SIZE = [64, 64];
 
-const PALETTE_SIZE_0 = PALETTE_SIZE - 1;
-
 function main(args) {
   const a = palette(PALLETES);
 
@@ -36,13 +34,15 @@ function palette(file) {
       for (var j = 0; j < PALETTE_SIZE; i += 2, j++) {
         var tmp = buffer.readUInt16LE(i);
         var r = tmp & 0x1F;
-        r = r << 3 | (r >> 2);
         var g = tmp >> 5 & 0x3F;
-        g = g << 2 | (g >> 4);
         var b = tmp >> 11 & 0x1F;
+
+        // convert to RGB888
+        r = r << 3 | (r >> 2);
+        g = g << 2 | (g >> 4);
         b = b << 3 | (b >> 2);
-        var color = (0xFF000000 | r << 16 | g << 8 | b << 0);
-        palette.push(color);
+
+        palette.push([r, g, b]);
       }
 
       paletteColors.push(palette)
@@ -51,30 +51,29 @@ function palette(file) {
 }
 
 function walls2(file, palettes, mappings) {
-  var texels = fs.readFileSync(file);
-  var textureBuffer = texels.slice(4);
-  var outputBuffer = [];
-  let i = 0;
+  const textureBuffer = fs.readFileSync(file).slice(4);
+  let outputBuffer = [];
 
   const textureSize = TEXTURE_SIZE[0] * TEXTURE_SIZE[1];
 
-  for (const [texoffset, palid] of mappings) {
+  for (const [textureOffset, palid] of mappings) {
 
-    for (var j = texoffset; j < texoffset + textureSize; j++) {
-      const pixel = textureBuffer[j];
-      var color1 = palettes[palid][pixel & 0xF]; //(textureBuffer[j] & 0xF) + i];
-      var red1 = 0xFF & (color1 >> 16);
-      var green1 = 0xFF & (color1 >> 8);
-      var blue1 = 0xFF & (color1);
-      var color2 = palettes[palid][pixel >> 4 & 0xF];//(textureBuffer[j] >> 4 & 0xF) + i];
-      var red2 = 0xFF & (color2 >> 16);
-      var green2 = 0xFF & (color2 >> 8);
-      var blue2 = 0xFF & (color2);
+    for (let pixelsOffset = 0; pixelsOffset < textureSize; pixelsOffset += 2) {
+      const palette = palettes[palid];
 
-      outputBuffer.push(red1, green1, blue1, red2, green2, blue2);
+      // Each uint8 have two uint4 pixels
+      const pixels = textureBuffer[textureOffset / 2 + pixelsOffset / 2];
+      const pixel1 = pixels & 0xF;
+      const pixel2 = pixels >> 4 & 0xF;
+
+      outputBuffer.push(...palette[pixel1], ...palette[pixel2]);
     }
-    fs.writeFileSync(`export/texel_${texoffset / textureSize}_palette_${palid}.raw`, Buffer.from(outputBuffer));
-    i++;
+
+    fs.writeFileSync(
+      `export/texel_${textureOffset / textureSize}_palette_${palid}.raw`,
+      Buffer.from(outputBuffer)
+    );
+
     outputBuffer = [];
   }
 }
@@ -92,10 +91,10 @@ function mappings(file) {
 
   const dict = [];
 
-  for (let i = 0; i < texturesCount; i++) {
+  for (let i = 0; i < texturesCount; i+=2) {
     const texeloffset = buffer.readUInt32LE(offset);// / 4096;
     offset += 4;
-    const palid = buffer.readUInt32LE(offset) / 16;
+    const palid = buffer.readUInt32LE(offset) / PALETTE_SIZE;
     offset += 4;
     dict.push([texeloffset, palid]);
   }
