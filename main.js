@@ -1,6 +1,16 @@
-// const PALLETES = '../palettes.bin';
-// const WTEXELS = '../wtexels.bin';
-// const MAPPINGS = '../mappings.bin';
+/**
+ * Copyright (c) 2021 DRRP-Team (PROPHESSOR)
+ * 
+ * Move here palettes.bin, wtexels.bin and mappings.bin and run:
+ * $> node main.js ; bash extract.sh
+ * 
+ * This software is released under the MIT License.
+ * https://opensource.org/licenses/MIT
+ */
+
+const fs = require('fs');
+const path = require('path');
+
 const PALLETES = 'palettes.bin';
 const WTEXELS = 'wtexels.bin';
 const MAPPINGS = 'mappings.bin';
@@ -9,33 +19,39 @@ const PALETTE_SIZE = 16;
 const TEXTURE_SIZE = [64, 64];
 
 function main(args) {
-  const a = palette(PALLETES);
+  const folder = args[2] || './';
 
-  console.log(a);
+  const palettes = getPalettes(path.join(folder, PALLETES));
 
-  const m = mappings(MAPPINGS);
+  const mappings = getMappings(path.join(folder, MAPPINGS));
+  
+  const outputFolder = path.join(folder, 'export');
 
-  console.log(m);
+  fs.existsSync(outputFolder) || fs.mkdirSync(outputFolder);
 
-  const b = walls2(WTEXELS, a, m);
-
-  console.log(b);
+  extractTextures(
+    path.join(folder, WTEXELS), // texels
+    outputFolder, // output
+    
+    palettes,
+    mappings
+  );
 }
 
-const fs = require('fs');
+function getPalettes(file) {
+    const buffer = fs.readFileSync(file);
+    const numPalettes = buffer.readInt32LE(0);
+    const palettes = [];
 
-function palette(file) {
-    var buffer = fs.readFileSync(file);
-    var numColors = buffer.readInt32LE(0);
-    const paletteColors = [];
-
-    for (var i = 4; i < numColors + 4;) {
+    for (let paletteId = 4; paletteId < numPalettes + 4;) {
       const palette = [];
-      for (var j = 0; j < PALETTE_SIZE; i += 2, j++) {
-        var tmp = buffer.readUInt16LE(i);
-        var r = tmp & 0x1F;
-        var g = tmp >> 5 & 0x3F;
-        var b = tmp >> 11 & 0x1F;
+
+      for (let color = 0; color < PALETTE_SIZE; paletteId += 2, color++) {
+        const packed = buffer.readUInt16LE(paletteId);
+
+        let r = packed & 0x1F;
+        let g = packed >> 5 & 0x3F;
+        let b = packed >> 11 & 0x1F;
 
         // convert to RGB888
         r = r << 3 | (r >> 2);
@@ -45,20 +61,20 @@ function palette(file) {
         palette.push([r, g, b]);
       }
 
-      paletteColors.push(palette)
+      palettes.push(palette)
     }
-    return paletteColors;
+
+    return palettes;
 }
 
-function walls2(file, palettes, mappings) {
-  const textureBuffer = fs.readFileSync(file).slice(4);
+function extractTextures(texelsFile, output, palettes, mappings) {
+  const textureBuffer = fs.readFileSync(texelsFile).slice(4);
 
   for (const [textureId, paletteId] of mappings) {
-
     const outputBuffer = getTexture(textureBuffer, palettes, textureId, paletteId);
 
     fs.writeFileSync(
-      `export/texel_${textureId}_palette_${paletteId}.raw`,
+      path.join(output, `texel_${textureId}_palette_${paletteId}.raw`),
       Buffer.from(outputBuffer)
     );
   }
@@ -83,11 +99,10 @@ function getTexture(texelsBuffer, palettes, textureId, paletteId) {
   return outBuffer;
 }
 
-function mappings(file) {
+function getMappings(file) {
   var buffer = fs.readFileSync(file);
   let offset = 0;
   var texturesCount = buffer.readInt32LE(offset);
-  console.log('found ' + texturesCount + ' mappings');
   offset += 4;
   var spritesCount = buffer.readInt32LE(offset);
   offset += 4;
@@ -103,8 +118,8 @@ function mappings(file) {
     offset += 4;
     dict.push([texelId, paletteId]);
   }
+
   return dict;
 }
 
-
-main(process.argv)
+if (require.main === module) main(process.argv)
